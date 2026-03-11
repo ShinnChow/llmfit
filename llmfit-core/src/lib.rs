@@ -15,4 +15,6 @@ pub use plan::{
 pub use providers::{
     LlamaCppProvider, LmStudioProvider, MlxProvider, ModelProvider, OllamaProvider,
 };
-pub use update::{UpdateOptions, cache_file, clear_cache, load_cache, save_cache, update_model_cache};
+pub use update::{
+    UpdateOptions, cache_file, clear_cache, load_cache, save_cache, update_model_cache,
+};
