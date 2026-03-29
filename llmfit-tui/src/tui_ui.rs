@@ -140,10 +140,7 @@ fn draw_system_bar(frame: &mut Frame, app: &App, area: Rect, tc: &ThemeColors) {
         if app.llamacpp_detection_hint.is_empty() {
             format!("llama.cpp: ✓ ({} models)", app.llamacpp_installed_count)
         } else {
-            format!(
-                "llama.cpp: ✓ ({})",
-                app.llamacpp_detection_hint
-            )
+            format!("llama.cpp: ✓ ({})", app.llamacpp_detection_hint)
         }
     } else if !app.llamacpp_installed.is_empty() {
         format!("llama.cpp: ({} cached)", app.llamacpp_installed_count)
