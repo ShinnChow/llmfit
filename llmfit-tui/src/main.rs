@@ -385,6 +385,12 @@ AGENT USAGE:
         #[arg(long)]
         quant: Option<String>,
 
+        /// KV cache element representation (fp16, fp8, q8_0, q4_0, tq).
+        /// Defaults to fp16. `tq` is TurboQuant, vLLM + CUDA only and
+        /// experimental (not in upstream vLLM yet).
+        #[arg(long, value_name = "KV")]
+        kv_quant: Option<String>,
+
         /// Target decode speed in tokens/sec
         #[arg(long, value_name = "TOK_S")]
         target_tps: Option<f64>,
@@ -1709,6 +1715,7 @@ fn run_plan(
     model_selector: &str,
     context: u32,
     quant: Option<String>,
+    kv_quant: Option<String>,
     target_tps: Option<f64>,
     json: bool,
     overrides: &HardwareOverrides,
@@ -1717,10 +1724,30 @@ fn run_plan(
     let specs = detect_specs(overrides);
     let model = resolve_model_selector(db.get_all_models(), model_selector)?;
 
+    let kv_quant = match kv_quant {
+        Some(s) => Some(llmfit_core::models::KvQuant::parse(&s).ok_or_else(|| {
+            format!(
+                "Unsupported --kv-quant '{}'. Valid: fp16, fp8, q8_0, q4_0, tq",
+                s
+            )
+        })?),
+        None => None,
+    };
+
+    if kv_quant == Some(llmfit_core::models::KvQuant::TurboQuant) {
+        eprintln!(
+            "warning: TurboQuant is experimental, not in upstream vLLM yet. \
+             See https://github.com/0xSero/turboquant for the research integration. \
+             Numbers below assume the documented compression ratio applied only to \
+             full attention layers."
+        );
+    }
+
     let request = PlanRequest {
         context,
         quant,
         target_tps,
+        kv_quant,
     };
     let plan = estimate_model_plan(model, &request, &specs)?;
 
@@ -1842,10 +1869,12 @@ fn main() {
                 model,
                 context,
                 quant,
+                kv_quant,
                 target_tps,
             } => {
-                if let Err(err) = run_plan(&model, context, quant, target_tps, cli.json, &overrides)
-                {
+                if let Err(err) = run_plan(
+                    &model, context, quant, kv_quant, target_tps, cli.json, &overrides,
+                ) {
                     eprintln!("Error: {}", err);
                     std::process::exit(1);
                 }
@@ -1967,6 +1996,9 @@ mod tests {
                 format: llmfit_core::models::ModelFormat::default(),
                 num_attention_heads: None,
                 num_key_value_heads: None,
+                num_hidden_layers: None,
+                head_dim: None,
+                attention_layout: None,
                 license: None,
             },
             fit_level,
@@ -2043,6 +2075,9 @@ mod tests {
                 format: llmfit_core::models::ModelFormat::default(),
                 num_attention_heads: None,
                 num_key_value_heads: None,
+                num_hidden_layers: None,
+                head_dim: None,
+                attention_layout: None,
                 license: None,
             },
             LlmModel {
@@ -2066,6 +2101,9 @@ mod tests {
                 format: llmfit_core::models::ModelFormat::default(),
                 num_attention_heads: None,
                 num_key_value_heads: None,
+                num_hidden_layers: None,
+                head_dim: None,
+                attention_layout: None,
                 license: None,
             },
         ];
