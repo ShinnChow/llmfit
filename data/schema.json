@@ -1,4 +1,3 @@
-
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://llmfit.dev/schemas/hf_models.schema.json",
@@ -256,6 +255,23 @@
               "type": "null"
             }
           ]
+        },
+        "_audio_backends": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "_audio_rtf_cpu": {
+          "type": "number",
+          "minimum": 0
+        },
+        "_audio_rtf_gpu": {
+          "type": "number",
+          "minimum": 0
+        },
+        "_audio_vram_gb": {
+          "$ref": "#/$defs/nonNegativeNumberOrNull"
         },
         "_discovered": {
           "type": "boolean"
