@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.33](https://github.com/AlexsJones/llmfit/compare/v0.9.32...v0.9.33) (2026-06-23)
+
+
+### Bug Fixes
+
+* **docker:** bump builder image to rust 1.95 (sysinfo MSRV) ([b63a142](https://github.com/AlexsJones/llmfit/commit/b63a14244d93fb1fdd50b2f49c96abaac872b977))
+* **docker:** bump builder image to rust 1.95 (sysinfo MSRV) ([b943f3a](https://github.com/AlexsJones/llmfit/commit/b943f3a84a63e77a740acacd38a09c69774dda8c))
+
 ## [0.9.32](https://github.com/AlexsJones/llmfit/compare/v0.9.31...v0.9.32) (2026-06-23)
 
 
