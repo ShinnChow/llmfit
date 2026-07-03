@@ -101,6 +101,8 @@ pub struct LeaderboardEntry {
     #[serde(default)]
     pub engine: Option<LeaderboardEngine>,
     #[serde(default)]
+    pub engine_flags: Option<LeaderboardEngineFlags>,
+    #[serde(default)]
     pub user: Option<LeaderboardUser>,
 }
 
@@ -117,6 +119,19 @@ pub struct LeaderboardModel {
     pub params: Option<f64>,
     #[serde(default)]
     pub is_mo_e: Option<bool>,
+}
+
+/// Per-run engine acceleration flags. Speculative decoding and MTP runs
+/// measure draft-accelerated throughput, which can exceed the memory
+/// bandwidth roofline that plain autoregressive estimates model — consumers
+/// comparing against `estimate_tps` must filter these out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardEngineFlags {
+    #[serde(default)]
+    pub spec_decoding: Option<bool>,
+    #[serde(default)]
+    pub mtp_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

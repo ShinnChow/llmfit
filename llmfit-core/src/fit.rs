@@ -2395,6 +2395,16 @@ mod tests {
                 if row.batch_size.unwrap_or(1) > 1 {
                     continue;
                 }
+                // Draft-accelerated runs (speculative decoding / MTP) exceed
+                // the memory-bandwidth roofline plain autoregressive
+                // estimates model — e.g. 577 tok/s for a 9B on an 800 GB/s
+                // card. Comparing against them reads as a 3-4× estimator
+                // "bias" that isn't one.
+                if row.engine_flags.as_ref().is_some_and(|f| {
+                    f.spec_decoding.unwrap_or(false) || f.mtp_enabled.unwrap_or(false)
+                }) {
+                    continue;
+                }
                 let hf_id = row.hf_id();
                 if hf_id.is_empty() {
                     continue;
@@ -2477,12 +2487,13 @@ mod tests {
             );
         }
 
-        // Guardrails: a median outside this band means a systematic bias on
-        // the order of the #449 bug — investigate before loosening.
+        // Guardrails: a median outside this band means a systematic bias
+        // approaching the #449 bug — investigate before loosening. Baseline
+        // when set (2026-07, 152 rows): median 0.87, per-preset 0.67–1.19.
         assert!(
-            (0.33..=3.0).contains(&median),
+            (0.5..=2.0).contains(&median),
             "estimate_tps median est/measured ratio {median:.2} is outside \
-             [0.33, 3.0] — systematic estimator bias against {} measured runs",
+             [0.5, 2.0] — systematic estimator bias against {} measured runs",
             ratios.len()
         );
     }
