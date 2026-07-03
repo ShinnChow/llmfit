@@ -1,6 +1,12 @@
 # Multi-stage build for llmfit
 # Stage 1: Build the Rust binary
-FROM rust:1.88-slim AS builder
+# rustc >= 1.95 required: sysinfo 0.39.x bumped its MSRV to 1.95.
+# Pin the Debian release to match the runtime stage (bookworm). The default
+# rust:1.95-slim base tracks trixie (glibc 2.39), which links the binary
+# against symbols the bookworm runtime (glibc 2.36) does not provide, so the
+# binary fails to start with "GLIBC_2.39 not found". Keep both stages on the
+# same release so the linked glibc is always available at runtime.
+FROM rust:1.95-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \

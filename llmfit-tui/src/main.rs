@@ -204,6 +204,76 @@ AGENT USAGE:
   gpu_backend, unified_memory, os } }")]
     System,
 
+    /// Print a hardware diagnostic report for bug reports
+    #[command(long_about = "\
+Print a hardware diagnostic report for GitHub bug reports.
+
+Captures the raw output of every external tool GPU detection shells out to
+(nvidia-smi, rocm-smi, sysfs, lspci, system_profiler, WMI, vulkaninfo,
+npu-smi) alongside what llmfit actually detected, so detection bugs can be
+reproduced — and turned into regression tests — from the report alone.
+
+PRECONDITIONS:
+  None. Missing tools are reported as unavailable, which is itself useful.
+
+SIDE EFFECTS:
+  None — read-only. Output contains hardware model names and driver info
+  only; no hostnames, usernames, or serial numbers.
+
+EXIT CODES:
+  0  Success
+
+AGENT USAGE:
+  llmfit doctor > llmfit-doctor.md
+
+  Output is Markdown; attach or paste it into a GitHub issue.")]
+    Doctor,
+
+    /// Generate a Kubernetes DRA ResourceClaim encoding the model's fit
+    #[command(long_about = "\
+Generate a Kubernetes DRA ResourceClaim (or ResourceClaimTemplate) whose CEL
+selector encodes the model's fit inequality against attributes published by
+the llmfit.ai DRA driver (llmfit-dra). Constants (weights size, memory floor,
+bandwidth floor) are resolved from the model database and inlined; the YAML
+is printed on stdout with provenance comments.
+
+PRECONDITIONS:
+  None locally. Applying the output requires a cluster running llmfit-dra
+  (Kubernetes >= 1.34) with its shipped DeviceClasses.
+
+SIDE EFFECTS:
+  None — prints YAML; pipe to kubectl to apply.
+
+EXIT CODES:
+  0  Success
+  1  Unknown/ambiguous model, or invalid bounds
+
+AGENT USAGE:
+  llmfit claim qwen2.5-32b --min-tps 20 | kubectl apply -f -
+  llmfit claim mistral-7b --template > claim-template.yaml")]
+    Claim {
+        /// Model name (exact or unambiguous partial match)
+        model: String,
+        /// Minimum acceptable decode speed, tokens/second
+        #[arg(long, default_value_t = 20.0)]
+        min_tps: f64,
+        /// Override the database entry's quantization (e.g. Q4_K_M, Q8_0)
+        #[arg(long)]
+        quant: Option<String>,
+        /// Backend efficiency percentage used in the fit inequality
+        #[arg(long, default_value_t = 55)]
+        efficiency: u32,
+        /// DeviceClass the claim requests against
+        #[arg(long, default_value = "llmfit.ai")]
+        device_class: String,
+        /// Emit a ResourceClaimTemplate (for pod templates) instead of a ResourceClaim
+        #[arg(long)]
+        template: bool,
+        /// metadata.name for the generated object (default: derived from the model name)
+        #[arg(long)]
+        name: Option<String>,
+    },
+
     /// List all available LLM models
     #[command(long_about = "\
 List all available LLM models.
@@ -682,6 +752,14 @@ AGENT USAGE:
         #[arg(long, default_value = "8787")]
         port: u16,
 
+        /// Listen on a Unix domain socket instead of TCP (unix platforms
+        /// only). Any stale socket file is replaced; the socket is created
+        /// with mode 0660. Intended for same-host/same-pod consumers (e.g.
+        /// the llmfit-dra DRA driver sidecar) where a TCP port on the host
+        /// network is undesirable.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["host", "port"])]
+        unix_socket: Option<std::path::PathBuf>,
+
         /// Run as MCP server on stdio instead of HTTP
         #[arg(long)]
         mcp: bool,
@@ -957,11 +1035,6 @@ fn run_fit(
     overrides: &HardwareOverrides,
     context_limit: Option<u32>,
 ) {
-    use llmfit_core::providers::{
-        self as provs, DockerModelRunnerProvider, LlamaCppProvider, LmStudioProvider, MlxProvider,
-        ModelProvider, OllamaProvider,
-    };
-
     let specs = detect_specs(overrides);
     let db = ModelDatabase::new();
 
@@ -969,13 +1042,7 @@ fn run_fit(
         specs.display();
     }
 
-    // Query installed models across local providers so that `fit.installed`
-    // is populated in both text and JSON output — same behaviour as `recommend`.
-    let ollama_installed = OllamaProvider::new().installed_models();
-    let mlx_installed = MlxProvider::new().installed_models();
-    let llamacpp_installed = LlamaCppProvider::new().installed_models();
-    let docker_mr_installed = DockerModelRunnerProvider::new().installed_models();
-    let lmstudio_installed = LmStudioProvider::new().installed_models();
+    let installed = llmfit_core::analysis::InstalledIndex::detect_all();
 
     let hidden: usize = db
         .get_all_models()
@@ -983,20 +1050,8 @@ fn run_fit(
         .filter(|m| !backend_compatible(m, &specs))
         .count();
 
-    let mut fits: Vec<ModelFit> = db
-        .get_all_models()
-        .iter()
-        .filter(|m| backend_compatible(m, &specs))
-        .map(|m| {
-            let mut fit = ModelFit::analyze_with_context_limit(m, &specs, context_limit);
-            fit.installed = provs::is_model_installed(&m.name, &ollama_installed)
-                || provs::is_model_installed_mlx(&m.name, &mlx_installed)
-                || provs::is_model_installed_llamacpp(&m.name, &llamacpp_installed)
-                || provs::is_model_installed_docker_mr(&m.name, &docker_mr_installed)
-                || provs::is_model_installed_lmstudio(&m.name, &lmstudio_installed);
-            fit
-        })
-        .collect();
+    let mut fits =
+        llmfit_core::analysis::build_model_fits(&db, &specs, &installed, context_limit, None);
 
     if perfect {
         fits.retain(|f| f.fit_level == llmfit_core::fit::FitLevel::Perfect);
@@ -1307,35 +1362,10 @@ fn run_recommend(
             }
         });
 
-    // Query installed models across local providers so that `fit.installed`
-    // is populated for CLI output (same behavior as the TUI). This also causes
-    // backends like Docker Model Runner to receive a probe request when
-    // DOCKER_MODEL_RUNNER_HOST is set.
-    use llmfit_core::providers::{
-        self as provs, DockerModelRunnerProvider, LlamaCppProvider, LmStudioProvider, MlxProvider,
-        ModelProvider, OllamaProvider,
-    };
-    let ollama_installed = OllamaProvider::new().installed_models();
-    let mlx_installed = MlxProvider::new().installed_models();
-    let llamacpp_installed = LlamaCppProvider::new().installed_models();
-    let docker_mr_installed = DockerModelRunnerProvider::new().installed_models();
-    let lmstudio_installed = LmStudioProvider::new().installed_models();
+    let installed = llmfit_core::analysis::InstalledIndex::detect_all();
 
-    let mut fits: Vec<ModelFit> = db
-        .get_all_models()
-        .iter()
-        .filter(|m| backend_compatible(m, &specs))
-        .map(|m| {
-            let mut fit =
-                ModelFit::analyze_with_forced_runtime(m, &specs, context_limit, forced_rt);
-            fit.installed = provs::is_model_installed(&m.name, &ollama_installed)
-                || provs::is_model_installed_mlx(&m.name, &mlx_installed)
-                || provs::is_model_installed_llamacpp(&m.name, &llamacpp_installed)
-                || provs::is_model_installed_docker_mr(&m.name, &docker_mr_installed)
-                || provs::is_model_installed_lmstudio(&m.name, &lmstudio_installed);
-            fit
-        })
-        .collect();
+    let mut fits =
+        llmfit_core::analysis::build_model_fits(&db, &specs, &installed, context_limit, forced_rt);
 
     // Filter by minimum fit level
     let min_level = match min_fit.to_lowercase().as_str() {
@@ -2434,18 +2464,9 @@ fn display_routing_matrix_full(
     let total_tests: usize = results.iter().map(|r| r.roles.len()).sum();
 
     println!();
-    println!(
-        "{}",
-        "╔══════════════════════════════════════════════════════╗"
-    );
-    println!(
-        "{}",
-        "║                MODEL ROUTING MATRIX                  ║"
-    );
-    println!(
-        "{}",
-        "╚══════════════════════════════════════════════════════╝"
-    );
+    println!("╔══════════════════════════════════════════════════════╗");
+    println!("║                MODEL ROUTING MATRIX                  ║");
+    println!("╚══════════════════════════════════════════════════════╝");
     println!();
     println!(
         "Provider: {} • Models: {} • Roles: {} • Tests: {}",
@@ -2565,6 +2586,42 @@ fn main() {
                 }
             }
 
+            Commands::Doctor => {
+                print!(
+                    "{}",
+                    llmfit_core::doctor::collect_diagnostics(env!("CARGO_PKG_VERSION"))
+                );
+            }
+
+            Commands::Claim {
+                model,
+                min_tps,
+                quant,
+                efficiency,
+                device_class,
+                template,
+                name,
+            } => {
+                let db = ModelDatabase::new();
+                let target = llmfit_core::claim::ClaimTarget {
+                    min_tps,
+                    efficiency_pct: efficiency,
+                    device_class,
+                    template,
+                    quant,
+                    name,
+                };
+                match resolve_model_selector(db.get_all_models(), &model)
+                    .and_then(|m| llmfit_core::claim::render(m, &target))
+                {
+                    Ok(yaml) => print!("{}", yaml),
+                    Err(err) => {
+                        eprintln!("Error: {}", err);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
             Commands::List { sort } => {
                 let db = ModelDatabase::new();
                 if cli.json {
@@ -2599,7 +2656,30 @@ fn main() {
             Commands::Search { query } => {
                 let db = ModelDatabase::new();
                 let results = db.find_model(&query);
-                display::display_search_results(&results, &query);
+                if results.is_empty() {
+                    // Fallback: search HuggingFace directly for GGUF models
+                    use llmfit_core::providers::LlamaCppProvider;
+                    println!(
+                        "\nNo local models found matching '{}'. Searching HuggingFace...\n",
+                        query
+                    );
+                    let hf_results = LlamaCppProvider::search_hf_gguf(&query);
+                    if hf_results.is_empty() {
+                        println!("No models found matching '{}'.", query);
+                    } else {
+                        println!("{:<50} Type", "Repository");
+                        println!("{}", "-".repeat(65));
+                        for (id, desc) in hf_results.iter().take(20) {
+                            println!("{:<50} {}", id, desc);
+                        }
+                        println!("\nTo download: llmfit download <repository>");
+                        println!(
+                            "Tip: run 'llmfit update' to add trending models to the local index."
+                        );
+                    }
+                } else {
+                    display::display_search_results(&results, &query);
+                }
             }
 
             Commands::Info { model } => {
@@ -2728,6 +2808,7 @@ fn main() {
             Commands::Serve {
                 host,
                 port,
+                unix_socket,
                 mcp,
                 send_events,
                 nats_url,
@@ -2753,7 +2834,13 @@ fn main() {
                         eprintln!("NATS events enabled, publishing to {}", nats_url);
                     }
 
-                    if let Err(err) = serve_api::run_serve(&host, port, &overrides, context_limit) {
+                    if let Err(err) = serve_api::run_serve(
+                        &host,
+                        port,
+                        unix_socket.as_deref(),
+                        &overrides,
+                        context_limit,
+                    ) {
                         eprintln!("Error: {}", err);
                         std::process::exit(1);
                     }

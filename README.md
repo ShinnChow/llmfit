@@ -6,7 +6,8 @@
 
 <p align="center">
   <b>English</b> ·
-  <a href="README.zh.md">中文</a>
+  <a href="README.zh.md">中文</a> ·
+  <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -49,6 +50,13 @@ If Scoop is not installed, follow the [Scoop installation guide](https://scoop.s
 ### macOS / Linux
 
 #### Homebrew
+
+Prebuilt binary (recommended, works on all macOS/Linux versions):
+```sh
+brew install AlexsJones/llmfit/llmfit
+```
+
+Or from the homebrew-core formula, which builds from source on macOS versions without a bottle:
 ```sh
 brew install llmfit
 ```
@@ -125,7 +133,7 @@ Launches the interactive terminal UI. Your system specs (CPU, RAM, GPU name, VRA
 | `V`                        | Enter Select mode (column-based filtering)                            |
 | `t`                        | Cycle color theme (saved automatically)                               |
 | `p`                        | Open Plan mode for selected model (hardware planning)                 |
-| `P`                        | Open provider filter popup                                            |
+| `P`                        | Open provider filter popup (type to fuzzy-filter providers)          |
 | `U`                        | Open use-case filter popup                                            |
 | `C`                        | Open capability filter popup                                          |
 | `L`                        | Open license filter popup                                             |
@@ -426,6 +434,10 @@ llmfit fit --perfect -n 5
 # Show detected system specs
 llmfit system
 
+# Hardware diagnostic report for bug reports (raw nvidia-smi/rocm-smi/sysfs
+# output + what llmfit detected) — paste into a GitHub issue
+llmfit doctor
+
 # List all models in the database
 llmfit list
 
@@ -569,7 +581,7 @@ llmfit plan "Qwen/Qwen2.5-Coder-0.5B-Instruct" --context 8192 --json
    - **Ascend** -- Detected via `npu-smi`.
    - **Backend detection** -- Automatically identifies the acceleration backend (CUDA, Metal, ROCm, SYCL, CPU ARM, CPU x86, Ascend) for speed estimation.
 
-2. **Model database** -- Hundreds models sourced from the HuggingFace API, stored in `data/hf_models.json` and embedded at compile time. Memory requirements are computed from parameter counts across a quantization hierarchy (Q8_0 through Q2_K). VRAM is the primary constraint for GPU inference; system RAM is the fallback for CPU-only execution.
+2. **Model database** -- Hundreds models sourced from the HuggingFace API, stored in `llmfit-core/data/hf_models.json` and embedded at compile time. Memory requirements are computed from parameter counts across a quantization hierarchy (Q8_0 through Q2_K). VRAM is the primary constraint for GPU inference; system RAM is the fallback for CPU-only execution.
 
    **MoE support** -- Models with Mixture-of-Experts architectures (Mixtral, DeepSeek-V2/V3) are detected automatically. Only a subset of experts is active per token, so the effective VRAM requirement is much lower than total parameter count suggests. For example, Mixtral 8x7B has 46.7B total parameters but only activates ~12.9B per token, reducing VRAM from 23.9 GB to ~6.6 GB with expert offloading.
 
@@ -648,7 +660,7 @@ python3 scripts/scrape_hf_models.py
 cargo build --release
 ```
 
-The scraper writes `data/hf_models.json`, which is baked into the binary via `include_str!`. The automated update script backs up existing data, validates JSON output, and rebuilds the binary.
+The scraper writes `llmfit-core/data/hf_models.json`, which is baked into the binary via `include_str!`. The automated update script backs up existing data, validates JSON output, and rebuilds the binary.
 
 By default, the scraper enriches models with known GGUF download sources from providers like [unsloth](https://huggingface.co/unsloth) and [bartowski](https://huggingface.co/bartowski). Results are cached in `data/gguf_sources_cache.json` (7-day TTL) to avoid repeated API calls. Use `--no-gguf-sources` to skip enrichment for a faster scrape.
 
@@ -667,8 +679,8 @@ src/
   tui_app.rs      -- TUI application state, filters, navigation
   tui_ui.rs       -- TUI rendering (ratatui)
   tui_events.rs   -- TUI keyboard event handling (crossterm)
-data/
-  hf_models.json  -- Model database (206 models)
+llmfit-core/data/
+  hf_models.json  -- Model database (embedded at compile time)
 skills/
   llmfit-advisor/ -- OpenClaw skill for hardware-aware model recommendations
 scripts/
@@ -704,7 +716,7 @@ curl -sL https://opensource.org/license/MIT -o LICENSE
 # Or write your own. The Cargo.toml declares license = "MIT".
 ```
 
-- `data/hf_models.json` is committed. It is embedded at compile time and must be present in the published crate.
+- `llmfit-core/data/hf_models.json` is committed. It is embedded at compile time and must be present in the published crate.
 
 To publish updates:
 
@@ -853,6 +865,15 @@ To connect to LM Studio on a different host or port, set the `LMSTUDIO_HOST` env
 LMSTUDIO_HOST="http://192.168.1.100:1234" llmfit
 ```
 
+### API authentication
+
+If your LM Studio instance has **Require API Key** enabled (required for MCP server access), set the `LMSTUDIO_API_KEY` environment variable to provide a Bearer token with all requests:
+
+```sh
+export LMSTUDIO_API_KEY="your-api-key-here"
+llmfit
+```
+
 ### Model name mapping
 
 llmfit's database uses HuggingFace model names (e.g. `Qwen/Qwen2.5-Coder-14B-Instruct`) while Ollama uses its own naming scheme (e.g. `qwen2.5-coder:14b`). llmfit maintains an accurate mapping table between the two so that install detection and pulls resolve to the correct model. Each mapping is exact — `qwen2.5-coder:14b` maps to the Coder model, not the base `qwen2.5:14b`.
@@ -907,7 +928,35 @@ Please run `cargo fmt` before pushing your changes. Most CI check failures are c
 cargo fmt
 ```
 
-### Adding a model
+### Adding your own models locally (no rebuild needed)
+
+You don't need to modify llmfit or wait for a release to see extra models. Create a `custom_models.json` in llmfit's data directory:
+
+- Linux: `~/.local/share/llmfit/custom_models.json`
+- macOS: `~/Library/Application Support/llmfit/custom_models.json`
+- Windows: `%APPDATA%\llmfit\custom_models.json`
+
+(or point the `LLMFIT_CUSTOM_MODELS` env var at any path). The file is a JSON array using the same entry format as the built-in catalog — see [llmfit-core/data/schema.json](llmfit-core/data/schema.json); only a few fields are required:
+
+```json
+[
+  {
+    "name": "my-org/My-Model-7B",
+    "provider": "my-org",
+    "parameter_count": "7B",
+    "min_ram_gb": 5.0,
+    "recommended_ram_gb": 8.0,
+    "min_vram_gb": 5.0,
+    "quantization": "Q4_K_M",
+    "context_length": 32768,
+    "use_case": "General chat"
+  }
+]
+```
+
+Custom entries with the same name as a catalog model **override** it; new names are added. Optional fields (`is_moe`, `num_hidden_layers`, `gguf_sources`, …) improve estimate accuracy when provided. You can also run `llmfit update` to fetch trending models from HuggingFace without a rebuild.
+
+### Adding a model to the built-in catalog
 
 1. Add the model's HuggingFace repo ID (e.g., `meta-llama/Llama-3.1-8B`) to the `TARGET_MODELS` list in `scripts/scrape_hf_models.py`.
 2. If the model is gated (requires HuggingFace authentication to access metadata), add a fallback entry to the `FALLBACKS` list in the same script with the parameter count and context length.

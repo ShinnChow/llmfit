@@ -1,5 +1,8 @@
+pub mod analysis;
 pub mod bench;
 pub mod benchmarks;
+pub mod claim;
+pub mod doctor;
 pub mod fit;
 pub mod hardware;
 pub mod models;
@@ -8,6 +11,7 @@ pub mod providers;
 pub mod quality;
 pub mod update;
 
+pub use analysis::{InstalledIndex, build_model_fits};
 pub use fit::{FitLevel, InferenceRuntime, ModelFit, RunMode, ScoreComponents, SortColumn};
 pub use hardware::{GpuBackend, SystemSpecs};
 pub use models::{Capability, LlmModel, ModelDatabase, ModelFormat, UseCase};
