@@ -1,20 +1,32 @@
-use std::fs;
+use llmfit_core::{ModelDatabase, ModelFormat};
+
+const CORE_ONNX_MODELS_JSON: &str = include_str!("../data/onnx_models.json");
+const ROOT_ONNX_MODELS_JSON: &str = include_str!("../../data/onnx_models.json");
 
 fn load_catalog() -> Vec<serde_json::Value> {
-    let raw = fs::read_to_string("../data/onnx_models.json")
-        .expect("failed to read data/onnx_models.json");
-    let value: serde_json::Value =
-        serde_json::from_str(&raw).expect("data/onnx_models.json is not valid JSON");
+    let value: serde_json::Value = serde_json::from_str(CORE_ONNX_MODELS_JSON)
+        .expect("embedded onnx_models.json is valid JSON");
     value
         .as_array()
-        .expect("data/onnx_models.json must be a JSON array")
+        .expect("embedded onnx_models.json is a JSON array")
         .clone()
+}
+
+#[test]
+fn core_and_repo_root_onnx_catalogs_are_mirrored() {
+    assert_eq!(
+        CORE_ONNX_MODELS_JSON, ROOT_ONNX_MODELS_JSON,
+        "repo-root and llmfit-core ONNX catalogs must stay in sync"
+    );
 }
 
 #[test]
 fn onnx_catalog_is_non_empty() {
     let models = load_catalog();
-    assert!(!models.is_empty(), "onnx_models.json must contain at least one model");
+    assert!(
+        !models.is_empty(),
+        "embedded onnx_models.json must contain at least one model"
+    );
 }
 
 #[test]
@@ -65,4 +77,33 @@ fn model_ids_are_unique() {
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), total, "model ids must be unique");
+}
+
+#[test]
+fn embedded_database_contains_onnx_catalog_models() {
+    let catalog = load_catalog();
+    let db = ModelDatabase::embedded();
+
+    for entry in catalog {
+        let id = entry
+            .get("id")
+            .and_then(|v| v.as_str())
+            .expect("catalog entry has id");
+        let model = db
+            .get_all_models()
+            .iter()
+            .find(|model| model.name == id)
+            .unwrap_or_else(|| panic!("embedded database must include ONNX model {id}"));
+
+        assert_eq!(model.format, ModelFormat::Onnx);
+        assert_eq!(model.provider, id.split('/').next().unwrap_or_default());
+        assert!(
+            model.min_ram_gb > 0.0,
+            "ONNX model {id} must have a positive RAM estimate"
+        );
+        assert!(
+            model.recommended_ram_gb >= model.min_ram_gb,
+            "ONNX model {id} recommended RAM must be at least min RAM"
+        );
+    }
 }
