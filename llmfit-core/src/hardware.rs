@@ -861,6 +861,13 @@ impl SystemSpecs {
             cards.push((name, vram_gb));
         }
 
+        Self::group_and_filter_amd_sysfs_cards(cards)
+    }
+
+    /// Group sysfs AMD cards by model name and drop integrated GPUs when a
+    /// discrete card is present. Pure so the #303/#638 multi-GPU
+    /// configurations can be regression-tested without a live sysfs.
+    fn group_and_filter_amd_sysfs_cards(cards: Vec<(String, Option<f64>)>) -> Vec<GpuInfo> {
         // Group identical models, tracking count and max per-card VRAM.
         let mut grouped: BTreeMap<String, (u32, Option<f64>)> = BTreeMap::new();
         for (name, vram_gb) in cards {
@@ -873,13 +880,18 @@ impl SystemSpecs {
             }
         }
 
-        // Filter out integrated GPUs when discrete GPUs are present.
+        // Filter out integrated GPUs when discrete GPUs are present. A card
+        // whose VRAM could not be read (None) gets the benefit of the doubt:
+        // only a *known* small VRAM (<= 2 GB) marks a card as
+        // integrated-class. Requiring Some(vram) here silently dropped
+        // discrete cards with an unreadable mem_info_vram_total and a name
+        // missing from the VRAM estimate table.
         let has_discrete = grouped.iter().any(|(name, (_, vram))| {
             !Self::is_integrated_gpu_name(name) && vram.unwrap_or(0.0) > 2.0
         });
         if has_discrete {
             grouped.retain(|name, (_, vram)| {
-                !Self::is_integrated_gpu_name(name) && vram.unwrap_or(0.0) > 2.0
+                !Self::is_integrated_gpu_name(name) && vram.is_none_or(|v| v > 2.0)
             });
         }
 
@@ -914,10 +926,13 @@ impl SystemSpecs {
             }
         }
 
-        // Fallback: any AMD/ATI display controller line.
+        // Fallback: any AMD/ATI display controller line. Headless/secondary
+        // cards (e.g. Instinct MI50s, #638) enumerate as "Display controller",
+        // not "VGA compatible controller", so match all three classes just
+        // like the slot-hint pass above.
         for line in text.lines() {
             let lower = line.to_lowercase();
-            if (lower.contains("vga") || lower.contains("3d"))
+            if (lower.contains("vga") || lower.contains("3d") || lower.contains("display"))
                 && (lower.contains("amd") || lower.contains("ati"))
                 && let Some(model) = Self::extract_model_from_lspci_line(line)
             {
@@ -2735,6 +2750,54 @@ fn estimate_vram_from_name(name: &str) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::SystemSpecs;
+
+    // Regression for #303 (wezm): Granite Ridge iGPU ("Radeon Graphics",
+    // 2 GB UMA carve-out) enumerated alongside an RX 9060 XT. The iGPU must
+    // be filtered out and the discrete card kept.
+    #[test]
+    fn test_amd_sysfs_igpu_filtered_when_discrete_present() {
+        let gpus = SystemSpecs::group_and_filter_amd_sysfs_cards(vec![
+            ("Radeon Graphics".to_string(), Some(2.0)),
+            ("Radeon RX 9060 XT".to_string(), Some(16.0)),
+        ]);
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].name, "Radeon RX 9060 XT");
+        assert_eq!(gpus[0].vram_gb, Some(16.0));
+        assert!(!SystemSpecs::is_integrated_gpu_name("Radeon RX 9060 XT"));
+    }
+
+    // A discrete card whose mem_info_vram_total is unreadable (None) and
+    // whose name isn't in the VRAM estimate table must not be silently
+    // dropped when another discrete card is present.
+    #[test]
+    fn test_amd_sysfs_vramless_discrete_card_kept() {
+        let gpus = SystemSpecs::group_and_filter_amd_sysfs_cards(vec![
+            ("Radeon RX 7900 XTX".to_string(), Some(24.0)),
+            ("Radeon Pro W7800X Duo".to_string(), None),
+        ]);
+        assert_eq!(gpus.len(), 2, "VRAM-less discrete card was dropped");
+    }
+
+    // Without any discrete card, the iGPU must survive the filter.
+    #[test]
+    fn test_amd_sysfs_igpu_kept_when_alone() {
+        let gpus = SystemSpecs::group_and_filter_amd_sysfs_cards(vec![(
+            "Radeon Graphics".to_string(),
+            Some(2.0),
+        )]);
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].name, "Radeon Graphics");
+    }
+
+    // lspci line for the RX 9060 XT (Navi 44) as seen in #303.
+    #[test]
+    fn test_extract_model_navi44_lspci_line() {
+        let line = "0000:03:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Navi 44 [Radeon RX 9060 XT] [1002:7590]";
+        assert_eq!(
+            SystemSpecs::extract_model_from_lspci_line(line).as_deref(),
+            Some("Radeon RX 9060 XT")
+        );
+    }
 
     #[test]
     fn test_parse_nvidia_smi_does_not_sum_multi_gpu_vram() {
