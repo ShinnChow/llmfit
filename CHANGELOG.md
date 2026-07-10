@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.0](https://github.com/AlexsJones/llmfit/compare/v1.0.1...v1.1.0) (2026-07-10)
+
+
+### Features
+
+* bench --share — contribute benchmarks as PRs without the gh CLI (RFC [#710](https://github.com/AlexsJones/llmfit/issues/710)) ([5114694](https://github.com/AlexsJones/llmfit/commit/51146943d75d09faeb7cc7412f32984638679ee7))
+* **bench:** add --share to contribute benchmarks via PR without gh CLI ([721eb66](https://github.com/AlexsJones/llmfit/commit/721eb666ab4c0fc15e3ea75a510aacb127d04a5d))
+* **bench:** detect llama-server as a first-class provider ([6dc367b](https://github.com/AlexsJones/llmfit/commit/6dc367be97329be00301a8aeeb63fc753d0c9ac2))
+* **bench:** local benchmark store — save runs, share the backlog later ([0e22a75](https://github.com/AlexsJones/llmfit/commit/0e22a75abc2da4da0f8c51797f79f391fc74cd3c))
+* **bench:** local store follow-ups — share backlog, dedup PRs, local-measurement overrides + calibration ([390cbf1](https://github.com/AlexsJones/llmfit/commit/390cbf1c6726580c308cc9113df0eede7ae7dba1))
+* **fit:** local benchmark runs override estimated tok/s ([274c048](https://github.com/AlexsJones/llmfit/commit/274c048bc3366bc74851128062cce27e81287d88))
+* **fit:** purge test-stub catalog entries; calibrate estimates from local benchmarks ([fb049c2](https://github.com/AlexsJones/llmfit/commit/fb049c210c13f65c0d77ac8da0ce50aec7c0b332))
+* **share:** reuse open benchmark PR and make submissions idempotent ([52f3afb](https://github.com/AlexsJones/llmfit/commit/52f3afb10b6fb521d880bae896cae15b117d9c69))
+* **tui:** expose installed/GGUF availability filter in the Filter modal ([dd940d5](https://github.com/AlexsJones/llmfit/commit/dd940d5288980c8ee9cac5724d4a75318d4be9d3))
+* **tui:** filter by installed models in the Filter modal ([75f4f1e](https://github.com/AlexsJones/llmfit/commit/75f4f1ec773435288b59ff83e699091bef253820))
+* **tui:** offer to benchmark the selected model on entering leaderboard ([61f6a47](https://github.com/AlexsJones/llmfit/commit/61f6a4705c5b72e0838aa957ef4507efde86bfaa))
+
+
+### Bug Fixes
+
+* **data:** verify GGUF source provenance; unlink wrong-model quants ([63b2d3a](https://github.com/AlexsJones/llmfit/commit/63b2d3aada13d87b276666497074c8c816d8805b))
+* **providers:** stop marking whole model families as installed for llama.cpp ([f839633](https://github.com/AlexsJones/llmfit/commit/f8396335b0fe748555e0764f0386ab7e17fac73e))
+* **tests:** pin GitHub-credential state in bench-offer toggle test ([618ba16](https://github.com/AlexsJones/llmfit/commit/618ba162a146b623711202264a3405695be1a037))
+* **tests:** pin GitHub-credential state in bench-offer toggle test ([fb5caff](https://github.com/AlexsJones/llmfit/commit/fb5caffc371907d53578c1919bf6ffa5a1616b11))
+
 ## [1.0.1](https://github.com/AlexsJones/llmfit/compare/v1.0.0...v1.0.1) (2026-07-09)
 
 
