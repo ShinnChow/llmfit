@@ -155,7 +155,24 @@ Envelope shape:
       "memory_available_gb": 12.0,
       "utilization_pct": 48.3,
       "notes": [],
-      "gguf_sources": []
+      "gguf_sources": [],
+      "capabilities": ["tool_use"],
+      "capability_ids": ["tool_use"],
+      "license": "apache-2.0",
+      "supports_tp": [1, 2, 4],
+      "installed": false,
+      "disk_size_gb": 5.1,
+      "ollama_name": "qwen2.5-coder:7b-instruct",
+      "estimate_basis": {
+        "method": "roofline",
+        "gpu_bandwidth_gbps": 320.0,
+        "ddr_bandwidth_gbps": null,
+        "local_calibration": null,
+        "efficiency": 0.85,
+        "assumed_context": 8192
+      },
+      "verify_command": "llama-bench -m <path-to-Q5_K_M-gguf> -ngl 99 -p 512 -n 128",
+      "measured_tps": null
     }
   ]
 }
@@ -169,6 +186,27 @@ The three context fields answer different questions:
 - `effective_context_length` — the context the `memory_required_gb` and
   `estimated_tps` figures on this row were computed at. Defaults to
   `min(context_length, 8192)`; set by `max_context` when supplied.
+
+The envelope also carries these fields, now at parity with `llmfit fit --json`
+(both frontends serialize through one shared function):
+
+- `installed` — whether the model was found in a local runtime provider.
+- `disk_size_gb` — estimated on-disk size at `best_quant`.
+- `capability_ids` — machine-readable capability ids (snake_case); mirrors
+  `capabilities` here. Note `llmfit fit --json` overloads its `capabilities`
+  key with human labels (e.g. `"Tool Use"`) — that overload is CLI-only and
+  slated for deprecation.
+- `ollama_name` — the `ollama pull` tag for this model, when derivable.
+- `estimate_basis` — how `memory_required_gb`/`estimated_tps` were derived
+  (bandwidths, efficiency, assumed context), for reproducibility.
+- `verify_command` — a `llama-bench` invocation measuring the same throughput
+  this row estimates (llama.cpp GPU / CPU-only runs; `null` otherwise).
+- `measured_tps` — a recorded benchmark result if one exists, else `null`.
+
+Note on vocabulary: `fit_level`, `run_mode`, and `runtime` here are stable
+machine codes (e.g. `"good"`, `"gpu"`, `"llamacpp"`), with the human string
+under the paired `*_label` key. `llmfit fit --json` emits the human string
+directly under those same keys — a CLI-only legacy overload.
 
 ---
 
