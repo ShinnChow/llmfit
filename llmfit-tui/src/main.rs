@@ -1292,7 +1292,7 @@ fn run_tui_inner(
     if open_bench {
         app.open_bench();
     }
-	
+
     // Force a full clear before the first frame: ratatui only paints the cells
     // a frame renders and trusts EnterAlternateScreen to start from a blank
     // screen, but some terminals (notably Windows Terminal, #732) switch to the
