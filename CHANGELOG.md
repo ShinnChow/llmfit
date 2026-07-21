@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.5](https://github.com/AlexsJones/llmfit/compare/v1.1.4...v1.1.5) (2026-07-20)
+
+
+### Bug Fixes
+
+* don't offer MLX downloads for AWQ/GPTQ repos; verify the mlx-community fallback exists before pulling ([1cc50ff](https://github.com/AlexsJones/llmfit/commit/1cc50ffc122c8d77eeb85916884005b29daef4a1))
+* **providers,tui:** stop offering MLX downloads for AWQ/GPTQ repos and verify the mlx-community fallback exists ([e36d832](https://github.com/AlexsJones/llmfit/commit/e36d8325b873c68d8cd2f2d35765cca157e6ba26)), closes [#294](https://github.com/AlexsJones/llmfit/issues/294)
+
 ## [1.1.4](https://github.com/AlexsJones/llmfit/compare/v1.1.3...v1.1.4) (2026-07-19)
 
 
